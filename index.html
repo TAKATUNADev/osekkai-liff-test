@@ -3,41 +3,62 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>登録フォームへ移動中</title>
-<style>body{font-family:sans-serif;padding:24px;color:#1F3A5F}#log{font-size:12px;color:#64748B;white-space:pre-wrap}</style>
+<title>おせっかい人事コミュニティ</title>
+<style>
+body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:0;padding:32px 24px;color:#1F3A5F;line-height:1.7}
+h1{font-size:18px;margin:0 0 16px}
+p{font-size:15px;margin:0 0 12px}
+.muted{font-size:12px;color:#64748B}
+</style>
 </head>
 <body>
-<p id="msg">登録フォームを準備しています…</p>
-<div id="log"></div>
+<h1>おせっかい人事コミュニティ</h1>
+<p id="msg">確認しています…</p>
+<p id="sub" class="muted"></p>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
-// 試作の設定（秘密情報は含まない）
+// 設定（秘密情報は含まない）
 const CFG = {
-  LIFF_ID: "2012510586-WkwsxkjD",
-  GAS_URL: "https://script.google.com/macros/s/AKfycbyDyw7SB_7Vcv9LLIf8gSc_Roz7HGUV3d0EgUIcmdYPQlkpk_25xF0YVnhon69CXD1P/exec",
-  FORM_URL: "https://docs.google.com/forms/d/e/1FAIpQLSfw-eJ7479S0BFEurg1-TkP43LnBiUykBmVvGQ1TI6XB41HVg/viewform",
-  ENTRY: "entry.57155561"
+  LIFF_ID: "2012512395-aegtmRli",
+  GAS_URL: "https://script.google.com/macros/s/AKfycbz_kDofOniuxLXmXlrAVCNzdLBn34AzjIS3P97OojzvUfTuPIEp1WF9aSVrfIYKVfr_/exec"
 };
-const log = (s) => { document.getElementById('log').textContent += s + "\n"; };
+const $ = (id) => document.getElementById(id);
+const show = (msg, sub) => { $('msg').textContent = msg; $('sub').textContent = sub || ''; };
+const ERR = {
+  nocode: ['参加ありがとうございます。', 'イベントのお申込みでお送りしたメールのリンクから開くと、登録が完了します。'],
+  notfound: ['このリンクは確認できませんでした。', 'お手数ですが、届いたメールのリンクをもう一度開いてください。'],
+  used: ['このリンクは別の LINE で登録済みです。', 'お心当たりがない場合は、おせっかい人事 事務局までご連絡ください。'],
+  verify: ['LINE の確認ができませんでした。', '時間をおいて、もう一度開いてください。'],
+  server: ['処理に失敗しました。', '時間をおいて、もう一度開いてください。']
+};
 (async () => {
   try {
     await liff.init({ liffId: CFG.LIFF_ID });
-    log('1. LIFF 初期化 OK（LINE内=' + liff.isInClient() + '）');
-    if (!liff.isLoggedIn()) { liff.login(); return; }
+    if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+    // 公式アカウントの友だちでなければ、友だち追加を促す
+    try {
+      const f = await liff.getFriendship();
+      if (!f.friendFlag && liff.isApiAvailable && liff.isApiAvailable('requestFriendship')) {
+        await liff.requestFriendship();
+      }
+    } catch (_) { /* 友だち追加の確認に失敗しても登録は続ける */ }
+    const t = new URLSearchParams(location.search).get('t') || '';
+    if (!t) { show.apply(null, ERR.nocode); return; }
     const idToken = liff.getIDToken();
-    if (!idToken) throw new Error('IDトークンが取れない（openid スコープを確認）');
-    log('2. IDトークン取得 OK');
-    const res = await fetch(CFG.GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ idToken }) });
+    if (!idToken) { show.apply(null, ERR.verify); return; }
+    const res = await fetch(CFG.GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ idToken, t })
+    });
     const j = await res.json();
-    if (!j.ok) throw new Error('GAS: ' + j.error);
-    log('3. GAS で検証 OK（照合番号 ' + j.code + '）');
-    const url = CFG.FORM_URL + '?usp=pp_url&' + CFG.ENTRY + '=' + encodeURIComponent(j.code);
-    document.getElementById('msg').textContent = '登録フォームへ移動します';
-    log('4. フォームへ移動');
-    setTimeout(() => { location.href = url; }, 1500);
+    if (j.ok) {
+      show('登録が完了しました。', 'おせっかい人事コミュニティからのご案内を LINE でお届けします。この画面は閉じてかまいません。');
+    } else {
+      show.apply(null, ERR[j.error] || ERR.server);
+    }
   } catch (e) {
-    document.getElementById('msg').textContent = 'エラーが発生しました';
-    log('ERROR: ' + (e && e.message ? e.message : e));
+    show.apply(null, ERR.server);
   }
 })();
 </script>
