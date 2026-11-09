@@ -13,10 +13,10 @@
 <script>
 // 試作の設定（秘密情報は含まない）
 const CFG = {
-  LIFF_ID: "__LIFF_ID__",
-  GAS_URL: "__GAS_URL__",
-  FORM_URL: "__FORM_URL__",   // 例 https://docs.google.com/forms/d/e/xxx/viewform
-  ENTRY: "__ENTRY__"          // 例 entry.123456789（照合番号の設問）
+  LIFF_ID: "2012510586-WkwsxkjD",
+  GAS_URL: "https://script.google.com/macros/s/AKfycbyDyw7SB_7Vcv9LLIf8gSc_Roz7HGUV3d0EgUIcmdYPQlkpk_25xF0YVnhon69CXD1P/exec",
+  FORM_URL: "https://docs.google.com/forms/d/e/1FAIpQLSfw-eJ7479S0BFEurg1-TkP43LnBiUykBmVvGQ1TI6XB41HVg/viewform",
+  ENTRY: "entry.57155561"
 };
 const log = (s) => { document.getElementById('log').textContent += s + "\n"; };
 (async () => {
@@ -34,7 +34,7 @@ const log = (s) => { document.getElementById('log').textContent += s + "\n"; };
     const url = CFG.FORM_URL + '?usp=pp_url&' + CFG.ENTRY + '=' + encodeURIComponent(j.code);
     document.getElementById('msg').textContent = '登録フォームへ移動します';
     log('4. フォームへ移動');
-    location.href = url;
+    setTimeout(() => { location.href = url; }, 1500);
   } catch (e) {
     document.getElementById('msg').textContent = 'エラーが発生しました';
     log('ERROR: ' + (e && e.message ? e.message : e));
