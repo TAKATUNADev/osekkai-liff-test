@@ -58,9 +58,10 @@ const post = async (body) => {
   return res.json();
 };
 const checkinDone = (name) => show('受付が完了しました。', (name ? name + ' 様、' : '') + 'ご来場ありがとうございます。この画面は閉じてかまいません。');
-// コミュニティ参加に同意して LINE と結んだ方だけ、友だちでなければ友だち追加を案内する
+// コミュニティ参加に同意して LINE と結んだ方だけ、友だち追加を促す（requestFriendship＝LIFF v2.28 以降・友だち済みなら小窓は自動で閉じる・profile スコープ不要）
+// 使えなかったときだけ、友だち追加のボタンを出す
 const askFriend = async () => {
-  try { const f = await liff.getFriendship(); if (!f.friendFlag) $('friend').style.display = 'block'; } catch (_) {}
+  try { await liff.requestFriendship(); } catch (_) { $('friend').style.display = 'block'; }
 };
 
 (async () => {
