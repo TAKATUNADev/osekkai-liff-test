@@ -13,7 +13,6 @@ form{display:none;margin-top:8px}
 label{display:block;font-size:14px;margin:14px 0 4px;font-weight:600}
 input[type=text],input[type=email],select{width:100%;box-sizing:border-box;font-size:16px;padding:10px;border:1px solid #CBD5E1;border-radius:6px}
 .radio label,.check label{font-weight:400;display:flex;gap:8px;align-items:flex-start;margin:6px 0}
-.extra{display:none}
 button{margin-top:20px;width:100%;font-size:16px;padding:12px;border:0;border-radius:6px;background:#06C755;color:#fff}
 button:disabled{background:#94A3B8}
 a{color:#2C5282}
@@ -23,32 +22,16 @@ a{color:#2C5282}
 <h1>おせっかい人事コミュニティ</h1>
 <p id="msg">確認しています…</p>
 <p id="sub" class="muted"></p>
+<div id="choice" style="display:none">
+  <button id="b_yes" type="button">申込済みの方</button>
+  <button id="b_no" type="button" style="background:#2C5282">申込していない方</button>
+</div>
+<p id="friend" style="display:none"><a id="friendlink" href="https://line.me/R/ti/p/@387rucab"><button type="button">おせっかい人事を友だち追加する</button></a></p>
 <form id="f" novalidate>
   <label for="name">お名前（フルネーム）</label>
   <input id="name" type="text" autocomplete="name" required>
   <label for="mail">メールアドレス</label>
   <input id="mail" type="email" autocomplete="email" required>
-  <label>このイベントにお申込み済みですか</label>
-  <div class="radio">
-    <label><input type="radio" name="applied" value="yes" checked>はい</label>
-    <label><input type="radio" name="applied" value="no">いいえ</label>
-  </div>
-  <div class="extra" id="extra">
-    <label for="company">会社名（正式名称）</label>
-    <input id="company" type="text" autocomplete="organization">
-    <label for="title">部署・役職</label>
-    <input id="title" type="text" autocomplete="organization-title">
-    <label for="consent">今後のご案内と個人情報の取扱い</label>
-    <p class="muted">ご入力いただいた情報は、株式会社ASHR（おせっかい人事事務局）が、本会の運営と、今後のイベント・情報のご案内に利用します。取扱いは<a href="https://www.ashrcorp.com/privacy" target="_blank">プライバシーポリシー</a>に従います。</p>
-    <select id="consent">
-      <option value="">選択してください</option>
-      <option>同意して、今後のご案内を受け取る</option>
-      <option>本会の運営への利用のみ同意する（今後の案内は不要）</option>
-    </select>
-    <div class="check">
-      <label><input type="checkbox" id="terms"><span><a href="https://docs.google.com/document/d/e/2PACX-1vTvN8PEcAC2HnLg-rMz0mmBKwgdXLq4IO9SnLcmU7o0OHeu5EGsRxyIfiu53RbSgZVwRmwArU63huhA/pub" target="_blank">イベント規約</a>に同意する</span></label>
-    </div>
-  </div>
   <button id="btn" type="submit">受付する</button>
 </form>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -67,7 +50,7 @@ const ERR = {
   verify: ['LINE の確認ができませんでした。', '時間をおいて、もう一度開いてください。'],
   noevent: ['受付の QR コードを確認できませんでした。', 'お手数ですが、受付のスタッフにお声がけください。'],
   badmail: ['メールアドレスの形式をご確認ください。', ''],
-  needinfo: ['入力されていない項目があります。', 'すべての項目をご入力ください。'],
+  needinfo: ['入力されていない項目があります。', 'お名前とメールアドレスをご入力ください。'],
   server: ['処理に失敗しました。', '時間をおいて、もう一度開いてください。']
 };
 const post = async (body) => {
@@ -75,18 +58,15 @@ const post = async (body) => {
   return res.json();
 };
 const checkinDone = (name) => show('受付が完了しました。', (name ? name + ' 様、' : '') + 'ご来場ありがとうございます。この画面は閉じてかまいません。');
+// コミュニティ参加に同意して LINE と結んだ方だけ、友だちでなければ友だち追加を案内する
+const askFriend = async () => {
+  try { const f = await liff.getFriendship(); if (!f.friendFlag) $('friend').style.display = 'block'; } catch (_) {}
+};
 
 (async () => {
   try {
     await liff.init({ liffId: CFG.LIFF_ID });
     if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
-    // 公式アカウントの友だちでなければ、友だち追加を促す
-    try {
-      const f = await liff.getFriendship();
-      if (!f.friendFlag && liff.isApiAvailable && liff.isApiAvailable('requestFriendship')) {
-        await liff.requestFriendship();
-      }
-    } catch (_) { /* 友だち追加の確認に失敗しても続ける */ }
     const q = new URLSearchParams(location.search);
     const t = q.get('t') || '';
     const ev = q.get('e') || '';
@@ -96,24 +76,34 @@ const checkinDone = (name) => show('受付が完了しました。', (name ? nam
     // 当日受付（会場の QR）
     if (ev) {
       const j = await post({ mode: 'checkin', idToken, e: ev });
-      if (j.ok) { checkinDone(j.name); return; }
+      if (j.ok) { checkinDone(j.name); if (j.linked) askFriend(); return; }
       if (j.error !== 'needinfo') { show.apply(null, ERR[j.error] || ERR.server); return; }
-      show('受付', 'お名前とメールアドレスをご入力ください。次回からは QR を読み取るだけで受付が終わります。');
-      const f = $('f'); f.style.display = 'block';
-      f.querySelectorAll('input[name=applied]').forEach(r => r.addEventListener('change', () => {
-        $('extra').style.display = f.applied.value === 'no' ? 'block' : 'none';
-      }));
+      show('受付', 'このイベントにお申込み済みですか。');
+      const c = $('choice'); c.style.display = 'block';
+      $('b_no').addEventListener('click', async () => {
+        $('b_no').disabled = true; $('b_yes').disabled = true;
+        try {
+          const j3 = await post({ mode: 'checkin', idToken: liff.getIDToken(), e: ev, applied: 'no' });
+          if (j3.ok && j3.form) { show('参加フォームを開いています…', ''); location.href = j3.form; return; }
+          show.apply(null, ERR[j3.error] || ERR.server);
+        } catch (_) { show.apply(null, ERR.server); }
+        $('b_no').disabled = false; $('b_yes').disabled = false;
+      });
+      $('b_yes').addEventListener('click', () => {
+        c.style.display = 'none';
+        show('受付', 'お申込みのときのお名前とメールアドレスをご入力ください。');
+        $('f').style.display = 'block';
+      });
+      const f = $('f');
       f.addEventListener('submit', async (e) => {
         e.preventDefault();
         $('btn').disabled = true;
         try {
           const j2 = await post({
-            mode: 'checkin', idToken: liff.getIDToken(), e: ev,
-            name: $('name').value.trim(), mail: $('mail').value.trim(), applied: f.applied.value,
-            company: $('company').value.trim(), title: $('title').value.trim(),
-            consent: $('consent').value, terms: $('terms').checked
+            mode: 'checkin', idToken: liff.getIDToken(), e: ev, applied: 'yes',
+            name: $('name').value.trim(), mail: $('mail').value.trim()
           });
-          if (j2.ok) { f.style.display = 'none'; checkinDone(j2.name); }
+          if (j2.ok) { f.style.display = 'none'; checkinDone(j2.name); if (j2.linked) askFriend(); }
           else { show.apply(null, ERR[j2.error] || ERR.server); $('btn').disabled = false; }
         } catch (_) { show.apply(null, ERR.server); $('btn').disabled = false; }
       });
@@ -125,6 +115,7 @@ const checkinDone = (name) => show('受付が完了しました。', (name ? nam
     const j = await post({ idToken, t });
     if (j.ok) {
       show('登録が完了しました。', 'おせっかい人事コミュニティからのご案内を LINE でお届けします。この画面は閉じてかまいません。');
+      askFriend();
     } else {
       show.apply(null, ERR[j.error] || ERR.server);
     }
