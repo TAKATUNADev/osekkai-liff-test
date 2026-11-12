@@ -26,6 +26,16 @@ a{color:#2C5282}
   <button id="b_yes" type="button">申込済みの方</button>
   <button id="b_no" type="button" style="background:#2C5282">申込していない方</button>
 </div>
+<div id="noapply" style="display:none">
+  <button id="b_retry" type="button" style="background:#64748B">入力し直す</button>
+  <button id="b_toform" type="button" style="background:#2C5282">参加フォームへ進む</button>
+</div>
+<div id="join" style="display:none">
+  <p>おせっかい人事コミュニティ（LINE 公式アカウント）に参加しますか。</p>
+  <div class="check"><label><input id="agree" type="checkbox"> <span>コミュニティに参加し、今後のご案内を LINE で受け取ります。個人情報は<a href="https://www.ashrcorp.com/privacy" target="_blank" rel="noopener">株式会社ASHR のプライバシーポリシー</a>に従って取り扱われます。</span></label></div>
+  <button id="b_join" type="button">参加する</button>
+  <button id="b_skip" type="button" style="background:#64748B">今回は参加しない</button>
+</div>
 <p id="friend" style="display:none"><a id="friendlink" href="https://line.me/R/ti/p/@387rucab"><button type="button">おせっかい人事を友だち追加する</button></a></p>
 <form id="f" novalidate>
   <label for="name">お名前（フルネーム）</label>
@@ -51,6 +61,8 @@ const ERR = {
   noevent: ['受付の QR コードを確認できませんでした。', 'お手数ですが、受付のスタッフにお声がけください。'],
   badmail: ['メールアドレスの形式をご確認ください。', ''],
   needinfo: ['入力されていない項目があります。', 'お名前とメールアドレスをご入力ください。'],
+  noapply: ['お申込みが見つかりませんでした。', 'お申込みのときのメールアドレスをご確認ください。お申込みがない場合は、参加フォームへお進みください。'],
+  needagree: ['参加には同意のチェックが必要です。', ''],
   server: ['処理に失敗しました。', '時間をおいて、もう一度開いてください。']
 };
 const post = async (body) => {
@@ -81,15 +93,40 @@ const askFriend = async () => {
       if (j.error !== 'needinfo') { show.apply(null, ERR[j.error] || ERR.server); return; }
       show('受付', 'このイベントにお申込み済みですか。');
       const c = $('choice'); c.style.display = 'block';
-      $('b_no').addEventListener('click', async () => {
-        $('b_no').disabled = true; $('b_yes').disabled = true;
+      // 申込なし（または申込が見つからない）→ 受付番号入りの参加フォームへ
+      const toForm = async (btns) => {
+        btns.forEach(b => { b.disabled = true; });
         try {
           const j3 = await post({ mode: 'checkin', idToken: liff.getIDToken(), e: ev, applied: 'no' });
           if (j3.ok && j3.form) { show('参加フォームを開いています…', ''); location.href = j3.form; return; }
           show.apply(null, ERR[j3.error] || ERR.server);
         } catch (_) { show.apply(null, ERR.server); }
-        $('b_no').disabled = false; $('b_yes').disabled = false;
+        btns.forEach(b => { b.disabled = false; });
+      };
+      $('b_no').addEventListener('click', () => toForm([$('b_no'), $('b_yes')]));
+      $('b_toform').addEventListener('click', () => toForm([$('b_toform'), $('b_retry')]));
+      $('b_retry').addEventListener('click', () => {
+        $('noapply').style.display = 'none';
+        show('受付', 'お申込みのときのお名前とメールアドレスをご入力ください。');
+        $('f').style.display = 'block'; $('btn').disabled = false;
       });
+      // 申込済みでコミュニティ未参加の方：受付の画面で参加を選べる
+      let who = { name: '', mail: '' };
+      $('b_join').addEventListener('click', async () => {
+        if (!$('agree').checked) { show.apply(null, ERR.needagree); return; }
+        $('b_join').disabled = true; $('b_skip').disabled = true;
+        try {
+          const j4 = await post({ mode: 'join', idToken: liff.getIDToken(), e: ev, name: who.name, mail: who.mail, agree: true });
+          if (j4.ok) {
+            $('join').style.display = 'none';
+            show('コミュニティへの参加が完了しました。', 'おせっかい人事コミュニティからのご案内を LINE でお届けします。この画面は閉じてかまいません。');
+            askFriend(); return;
+          }
+          show.apply(null, ERR[j4.error] || ERR.server);
+        } catch (_) { show.apply(null, ERR.server); }
+        $('b_join').disabled = false; $('b_skip').disabled = false;
+      });
+      $('b_skip').addEventListener('click', () => { $('join').style.display = 'none'; checkinDone(who.name); });
       $('b_yes').addEventListener('click', () => {
         c.style.display = 'none';
         show('受付', 'お申込みのときのお名前とメールアドレスをご入力ください。');
@@ -104,7 +141,15 @@ const askFriend = async () => {
             mode: 'checkin', idToken: liff.getIDToken(), e: ev, applied: 'yes',
             name: $('name').value.trim(), mail: $('mail').value.trim()
           });
-          if (j2.ok) { f.style.display = 'none'; checkinDone(j2.name); if (j2.linked) askFriend(); }
+          if (j2.ok) {
+            f.style.display = 'none';
+            if (j2.canJoin) {
+              who = { name: $('name').value.trim(), mail: $('mail').value.trim() };
+              show('受付が完了しました。', (j2.name ? j2.name + ' 様、' : '') + 'ご来場ありがとうございます。続けて、コミュニティへの参加を選べます。');
+              $('join').style.display = 'block';
+            } else { checkinDone(j2.name); if (j2.linked) askFriend(); }
+          }
+          else if (j2.error === 'noapply') { f.style.display = 'none'; show.apply(null, ERR.noapply); $('noapply').style.display = 'block'; }
           else { show.apply(null, ERR[j2.error] || ERR.server); $('btn').disabled = false; }
         } catch (_) { show.apply(null, ERR.server); $('btn').disabled = false; }
       });
