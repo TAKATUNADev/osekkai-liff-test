@@ -156,8 +156,15 @@ const askFriend = async () => {
       return;
     }
 
-    // 申込メールの参加リンク
-    if (!t) { show.apply(null, ERR.nocode); return; }
+    // ★S43 番号なし＝あいさつメッセージのリンク：結びついていれば登録済み、まだなら番号入りの登録フォームへ
+    if (!t) {
+      const jr = await post({ mode: 'reg', idToken });
+      if (jr.ok && jr.linked) { show('登録済みです。', (jr.name ? jr.name + ' 様、' : '') + 'おせっかい人事コミュニティからのご案内を LINE でお届けしています。この画面は閉じてかまいません。'); return; }
+      if (jr.ok && jr.form) { show('登録フォームを開いています…', ''); location.href = jr.form; return; }
+      show.apply(null, ERR[jr.error] || ERR.server); return;
+    }
+
+    // 申込メールの参加リンク・個別のご案内のリンク
     const j = await post({ idToken, t });
     if (j.ok) {
       show('登録が完了しました。', 'おせっかい人事コミュニティからのご案内を LINE でお届けします。この画面は閉じてかまいません。');
